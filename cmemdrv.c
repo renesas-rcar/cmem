@@ -67,6 +67,7 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/of_device.h>
+#include <linux/types.h>
 
 #define MAX_AREA_NUM 4
 #define DEFAULT_AREA_SIZE (16 * 1024 * 1024)
@@ -231,24 +232,24 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 	struct mem_access_data *p = filep->private_data;
 	struct device *dev = p->area->dev;
-	u32 offset, size, dir;
+	size_t offset, size, dir;
 	int ret = 0;
 
 	switch (cmd) {
 	case PARAM_SET :
-		ret = copy_from_user(&p->width,  &((unsigned int *)arg)[0], sizeof(unsigned int));
-		ret = copy_from_user(&p->height, &((unsigned int *)arg)[1], sizeof(unsigned int));
-		ret = copy_from_user(&p->stride, &((unsigned int *)arg)[2], sizeof(unsigned int));
-		ret = copy_from_user(&p->tl,     &((unsigned int *)arg)[3], sizeof(unsigned int));
-		ret = copy_from_user(&p->offset, &((unsigned int *)arg)[4], sizeof(unsigned int));
+		ret = copy_from_user(&p->width,  &((size_t __user *)arg)[0], sizeof(size_t));
+		ret = copy_from_user(&p->height, &((size_t __user *)arg)[1], sizeof(size_t));
+		ret = copy_from_user(&p->stride, &((size_t __user *)arg)[2], sizeof(size_t));
+		ret = copy_from_user(&p->tl,     &((size_t __user *)arg)[3], sizeof(size_t));
+		ret = copy_from_user(&p->offset, &((size_t __user *)arg)[4], sizeof(size_t));
 		break;
 	case M_ALLOCATE :
 		break;
 	case M_LOCK :
 		if (cached) {
-			ret = copy_from_user(&offset, &((unsigned int *)arg)[0], sizeof(unsigned int));
-			ret = copy_from_user(&size,   &((unsigned int *)arg)[1], sizeof(unsigned int));
-			ret = copy_from_user(&dir,    &((unsigned int *)arg)[2], sizeof(unsigned int));
+			ret = copy_from_user(&offset, &((size_t __user *)arg)[0], sizeof(size_t));
+			ret = copy_from_user(&size,   &((size_t __user *)arg)[1], sizeof(size_t));
+			ret = copy_from_user(&dir,    &((size_t __user *)arg)[2], sizeof(size_t));
 			if (dir == IOCTL_FROM_IMP_TO_CPU)
 				dma_sync_single_for_device(dev, p->area->phys_addr + p->start_offset +
 							   offset, size, DMA_FROM_DEVICE);
@@ -259,9 +260,9 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 	case M_UNLOCK :
 		if (cached) {
-			ret = copy_from_user(&offset, &((unsigned int *)arg)[0], sizeof(unsigned int));
-			ret = copy_from_user(&size,   &((unsigned int *)arg)[1], sizeof(unsigned int));
-			ret = copy_from_user(&dir,    &((unsigned int *)arg)[2], sizeof(unsigned int));
+			ret = copy_from_user(&offset, &((size_t __user *)arg)[0], sizeof(size_t));
+			ret = copy_from_user(&size,   &((size_t __user *)arg)[1], sizeof(size_t));
+			ret = copy_from_user(&dir,    &((size_t __user *)arg)[2], sizeof(size_t));
 			if (dir == IOCTL_FROM_IMP_TO_CPU)
 				dma_sync_single_for_cpu(dev, p->area->phys_addr + p->start_offset +
 							offset, size, DMA_FROM_DEVICE);
@@ -273,7 +274,7 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	case M_UNALLOCATE :
 		break;
 	case GET_PHYS_ADDR :
-		ret = copy_to_user((unsigned int*)arg, &p->area->phys_addr, sizeof(unsigned int));
+		ret = copy_to_user((size_t __user *)arg, &p->area->phys_addr, sizeof(size_t));
 		break;
 	case TRY_CONV :
 		cv_v_to_p( ( (unsigned long *)arg )[0], (unsigned long *)arg + 1);
