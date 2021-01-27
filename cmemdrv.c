@@ -69,19 +69,10 @@
 #include <linux/of_device.h>
 #include <linux/types.h>
 
+#include "cmemdrv.h"
+
 #define MAX_AREA_NUM 4
 #define DEFAULT_AREA_SIZE (16 * 1024 * 1024)
-
-#define PARAM_SET     1
-#define M_LOCK        3
-#define M_UNLOCK      4
-#define GET_PHYS_ADDR 5
-#define M_ALLOCATE    6
-#define M_UNALLOCATE  7
-#define TRY_CONV      8
-
-#define IOCTL_FROM_IMP_TO_CPU 0
-#define IOCTL_FROM_CPU_TO_IMP 1
 
 struct mem_area_data {
 	struct device *dev;
