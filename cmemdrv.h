@@ -21,4 +21,22 @@
 #define IOCTL_FROM_IMP_TO_CPU	0
 #define IOCTL_FROM_CPU_TO_IMP	1
 
+
+struct mem_setpara {
+	int offset;
+	int width;
+	int height;
+	int stride;
+	int tl;
+};
+
+struct mem_mlock {
+	size_t offset;
+	size_t size;
+	size_t dir;
+};
+
+struct mem_info {
+	size_t phys_addr;
+};
 #endif /* _RENESAS_CMEM_H_ */
