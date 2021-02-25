@@ -291,7 +291,7 @@ static int dev_mmap(struct file *filep, struct vm_area_struct *vma)
 	off = vma->vm_pgoff << PAGE_SHIFT;
 	start = p->area->phys_addr;
 
-	if ((vma->vm_end - vma->vm_start + off) > p->area->size)
+	if ((vma->vm_end - (vma->vm_start + off)) > p->area->size)
 		return -EINVAL;
 
 	off += start;
