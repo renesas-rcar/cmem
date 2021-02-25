@@ -18,8 +18,8 @@
 #define M_UNALLOCATE		7
 #define TRY_CONV		8
 
-#define IOCTL_FROM_IMP_TO_CPU	0
-#define IOCTL_FROM_CPU_TO_IMP	1
+#define IOCTL_FROM_DEV_TO_CPU	0
+#define IOCTL_FROM_CPU_TO_DEV	1
 
 
 struct mem_setpara {

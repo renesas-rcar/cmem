@@ -242,7 +242,7 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		if (cached) {
 			ret = copy_from_user(&mlock, (struct mem_mlock *)arg, sizeof(mlock));
 
-			if (mlock.dir == IOCTL_FROM_IMP_TO_CPU)
+			if (mlock.dir == IOCTL_FROM_DEV_TO_CPU)
 				dma_sync_single_for_device(dev, p->area->phys_addr + p->start_offset +
 							   mlock.offset, mlock.size, DMA_FROM_DEVICE);
 			else
@@ -254,7 +254,7 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		if (cached) {
 			ret = copy_from_user(&mlock, (struct mem_mlock *)arg, sizeof(mlock));
 
-			if (mlock.dir == IOCTL_FROM_IMP_TO_CPU)
+			if (mlock.dir == IOCTL_FROM_DEV_TO_CPU)
 				dma_sync_single_for_cpu(dev, p->area->phys_addr + p->start_offset +
 							mlock.offset, mlock.size, DMA_FROM_DEVICE);
 			else
