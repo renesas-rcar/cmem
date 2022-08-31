@@ -69,10 +69,11 @@
 #include <linux/of_device.h>
 #include <linux/types.h>
 #include <linux/of_address.h>
+#include <linux/of_reserved_mem.h>
 
 #include "cmemdrv.h"
 
-#define MAX_AREA_NUM 4
+#define MAX_AREA_NUM 10
 #define DEFAULT_AREA_SIZE (16 * 1024 * 1024)
 
 struct mem_area_data {
@@ -106,6 +107,9 @@ module_param(cfg_bsize, ulong, S_IRUGO);
 
 static unsigned int cmem_major = 88;		// 0:auto
 module_param(cmem_major, uint, S_IRUGO);
+
+static unsigned int cmem_major_plus;
+static unsigned int cmem_minor_plus;
 
 static struct class *cmem_class = NULL;
 static struct mem_area_data *cmem_areas[MAX_AREA_NUM];
@@ -419,6 +423,63 @@ err:
 	return ret;
 }
 
+static int cmemdrv_create_device_other_region(dev_t devt, int index,
+					      u64 reserved_size)
+{
+	struct mem_area_data *area;
+	struct device_node *np;
+	struct device *dev;
+	void *virt_b_ptr;
+	int ret = 0;
+	dma_addr_t phy_b_addr;
+
+	dev = device_create(cmem_class, NULL, devt, NULL, "cmem_other%d", index);
+	if (IS_ERR(dev)) {
+		pr_err("cmem: unable to create device cmem_other%d\n", index);
+		return PTR_ERR(dev);
+	}
+
+	np = of_find_node_by_path("/cmem");
+	area = devm_kzalloc(dev, sizeof(*area), GFP_KERNEL);
+	if (!area) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	area->dev = dev;
+	dev->coherent_dma_mask = DMA_BIT_MASK(32);
+
+	of_dma_configure(dev, np, true);
+
+	ret = of_reserved_mem_device_init_by_idx(area->dev, np, index);
+	if (ret) {
+		dev_err(dev, "Unable to get the reserved memory\n");
+		goto err;
+	}
+
+	virt_b_ptr = dmam_alloc_coherent(dev, reserved_size,
+					 &phy_b_addr, GFP_KERNEL);
+
+	if (!virt_b_ptr) {
+		dev_err(dev, "Memory allocation failed.. (size:0x%llx)\n", reserved_size);
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	area->virt_ptr = PTR_ALIGN(virt_b_ptr, PAGE_SIZE);
+	area->phys_addr = phy_b_addr + (area->virt_ptr - virt_b_ptr);
+	area->size = reserved_size;
+	cmem_areas[MINOR(devt)] = area;
+	dev_notice(dev, "Memory allocated.. 0x%08lx (size:0x%lx) [%ld MiB]\n",
+		   (unsigned long)area->phys_addr,
+		   (unsigned long)area->size,
+		   (unsigned long)area->size / SZ_1M);
+	return 0;
+
+err:
+	device_destroy(cmem_class, devt);
+	return ret;
+}
+
 static int __init cmemdrv_init(void)
 {
 	int i = 0, prop_size = 0, index = 0;
@@ -458,11 +519,36 @@ static int __init cmemdrv_init(void)
 	/* Looking for CMEM reserved memory */
 	np = of_find_node_by_path("/cmem");
 	of_get_property(np, "memory-region", &prop_size);
+	if (prop_size) {
+		cmem_major_plus = cmem_major + 100;
+		cmem_minor_plus = i;
 
-	while (prop_size > 0) {
-		parse_reserved_mem_dt(np, &reserved_size, index);
-		prop_size -= 4;
-		index++;
+		/* Create devices that support other reserved memory regions*/
+		for (ret = 0; prop_size > 0; prop_size -= 4) {
+			/* Each character device need registration */
+			ret = register_chrdev(cmem_major_plus, "CMem-Other", &fops);
+			if (ret < 0) {
+				pr_err("cmem: unable to get major %d\n", cmem_major_plus);
+				return ret;
+			}
+			if (cmem_major_plus == 0)
+				cmem_major_plus = ret;
+
+			/* Parsing reserved memory size from DT*/
+			parse_reserved_mem_dt(np, &reserved_size, index);
+
+			ret = cmemdrv_create_device_other_region(MKDEV(cmem_major_plus,
+								       cmem_minor_plus),
+								 index, reserved_size);
+			if (ret < 0)
+				device_destroy(cmem_class, MKDEV(cmem_major_plus,
+								 cmem_minor_plus));
+
+			/* Ignore failed region, continue with the next region*/
+			cmem_major_plus += 100;
+			cmem_minor_plus += 1;
+			index++;
+		}
 	}
 
 	return 0;
@@ -482,6 +568,14 @@ static void __exit cmemdrv_exit(void)
 	int i;
 	for (i = 0; i < bsize_count; i++)
 		device_destroy(cmem_class, MKDEV(cmem_major, i));
+
+	while (cmem_major_plus > cmem_major + 100) {
+		cmem_major_plus -= 100;
+		cmem_minor_plus -= 1;
+		device_destroy(cmem_class, MKDEV(cmem_major_plus,
+						 cmem_minor_plus));
+		unregister_chrdev(cmem_major_plus, "CMem-Other");
+	}
 
 	class_destroy(cmem_class);
 	unregister_chrdev(cmem_major, "CMem");
