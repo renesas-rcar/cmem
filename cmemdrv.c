@@ -68,6 +68,7 @@
 #include <linux/device.h>
 #include <linux/of_device.h>
 #include <linux/types.h>
+#include <linux/of_address.h>
 
 #include "cmemdrv.h"
 
@@ -342,6 +343,32 @@ static struct file_operations fops = {
 	.release        = dev_rls,
 };
 
+static int parse_reserved_mem_dt(struct device_node *np,
+				 u64 *reserved_size, int index)
+{
+	const __be32 *regaddr_p = NULL;
+	struct device_node *node = NULL;
+	int ret = 0;
+
+	node = of_parse_phandle(np, "memory-region", index);
+	if (node) {
+		/* Getting the size of the reverved memory region */
+		regaddr_p = of_get_address(node, 0, reserved_size, NULL);
+
+		if (regaddr_p) {
+			of_translate_address(node, regaddr_p);
+			pr_info("Getting reversed memory region size = [%llx]\n", *reserved_size);
+		} else {
+			pr_err("No reserved memory node for CMEM was found\n");
+			ret = -1;
+		}
+	}
+
+	of_node_put(node);
+
+	return ret;
+}
+
 static int cmemdrv_create_device(dev_t devt, size_t size)
 {
 	int ret;
@@ -394,7 +421,9 @@ err:
 
 static int __init cmemdrv_init(void)
 {
-	int i = 0;
+	int i = 0, prop_size = 0, index = 0;
+	struct device_node *np;
+	u64 reserved_size;
 	int ret;
 
 	if (bsize_count == 0)
@@ -424,6 +453,16 @@ static int __init cmemdrv_init(void)
 		ret = cmemdrv_create_device(MKDEV(cmem_major, i), bsize[i]);
 		if (ret < 0)
 			goto err2;
+	}
+
+	/* Looking for CMEM reserved memory */
+	np = of_find_node_by_path("/cmem");
+	of_get_property(np, "memory-region", &prop_size);
+
+	while (prop_size > 0) {
+		parse_reserved_mem_dt(np, &reserved_size, index);
+		prop_size -= 4;
+		index++;
 	}
 
 	return 0;
