@@ -80,6 +80,7 @@ struct mem_area_data {
 	struct device *dev;
 	size_t size;
 	void *virt_ptr;
+	int prop;
 	dma_addr_t phys_addr;
 };
 
@@ -110,6 +111,7 @@ module_param(cmem_major, uint, S_IRUGO);
 
 static unsigned int cmem_major_plus;
 static unsigned int cmem_minor_plus;
+static int no_map_skip;
 
 static struct class *cmem_class = NULL;
 static struct mem_area_data *cmem_areas[MAX_AREA_NUM];
@@ -244,7 +246,7 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	case M_ALLOCATE :
 		break;
 	case M_LOCK :
-		if (cached) {
+		if (cached && !p->area->prop) {
 			ret = copy_from_user(&mlock, (struct mem_mlock *)arg, sizeof(mlock));
 
 			if (mlock.dir == IOCTL_FROM_DEV_TO_CPU)
@@ -253,10 +255,13 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 			else
 				dma_sync_single_for_device(dev, p->area->phys_addr + p->start_offset +
 							   mlock.offset, mlock.size, DMA_TO_DEVICE);
+		} else {
+			dev_warn(dev, "## Operation not permitted with this region\n");
+			return -EPERM;
 		}
 		break;
 	case M_UNLOCK :
-		if (cached) {
+		if (cached && !p->area->prop) {
 			ret = copy_from_user(&mlock, (struct mem_mlock *)arg, sizeof(mlock));
 
 			if (mlock.dir == IOCTL_FROM_DEV_TO_CPU)
@@ -265,6 +270,9 @@ static long dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 			else
 				dma_sync_single_for_cpu(dev, p->area->phys_addr + p->start_offset +
 							mlock.offset, mlock.size, DMA_TO_DEVICE);
+		} else {
+			dev_warn(dev, "## Operation not permitted with this region\n");
+			return -EPERM;
 		}
 		break;
 	case M_UNALLOCATE :
@@ -350,7 +358,7 @@ static struct file_operations fops = {
 static int parse_reserved_mem_dt(struct device_node *np,
 				 u64 *reserved_size, int index)
 {
-	const __be32 *regaddr_p = NULL;
+	const __be32 *regaddr_p = NULL, *find;
 	struct device_node *node = NULL;
 	int ret = 0;
 
@@ -366,6 +374,12 @@ static int parse_reserved_mem_dt(struct device_node *np,
 			pr_err("No reserved memory node for CMEM was found\n");
 			ret = -1;
 		}
+
+		/* Identify as if the region is configured as no-map*/
+		no_map_skip = 0;
+		find = of_get_property(node, "no-map", NULL);
+		if (find)
+			no_map_skip = 1;
 	}
 
 	of_node_put(node);
@@ -468,6 +482,7 @@ static int cmemdrv_create_device_other_region(dev_t devt, int index,
 	area->virt_ptr = PTR_ALIGN(virt_b_ptr, PAGE_SIZE);
 	area->phys_addr = phy_b_addr + (area->virt_ptr - virt_b_ptr);
 	area->size = reserved_size;
+	area->prop = no_map_skip;
 	cmem_areas[MINOR(devt)] = area;
 	dev_notice(dev, "Memory allocated.. 0x%08lx (size:0x%lx) [%ld MiB]\n",
 		   (unsigned long)area->phys_addr,
