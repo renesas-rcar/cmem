@@ -106,7 +106,7 @@ static unsigned long cfg_bsize = 0;
 module_param(cfg_bsize, ulong, S_IRUGO);
 #endif
 
-static unsigned int cmem_major = 88;		// 0:auto
+static unsigned int cmem_major = 288;		// 0:auto
 module_param(cmem_major, uint, S_IRUGO);
 
 static unsigned int cmem_major_plus;
@@ -535,7 +535,7 @@ static int __init cmemdrv_init(void)
 	np = of_find_node_by_path("/cmem");
 	of_get_property(np, "memory-region", &prop_size);
 	if (prop_size) {
-		cmem_major_plus = cmem_major + 100;
+		cmem_major_plus = cmem_major + 9;
 		cmem_minor_plus = i;
 
 		/* Create devices that support other reserved memory regions*/
@@ -560,7 +560,7 @@ static int __init cmemdrv_init(void)
 								 cmem_minor_plus));
 
 			/* Ignore failed region, continue with the next region*/
-			cmem_major_plus += 100;
+			cmem_major_plus += 9;
 			cmem_minor_plus += 1;
 			index++;
 		}
@@ -584,8 +584,8 @@ static void __exit cmemdrv_exit(void)
 	for (i = 0; i < bsize_count; i++)
 		device_destroy(cmem_class, MKDEV(cmem_major, i));
 
-	while (cmem_major_plus > cmem_major + 100) {
-		cmem_major_plus -= 100;
+	while (cmem_major_plus > cmem_major + 9) {
+		cmem_major_plus -= 9;
 		cmem_minor_plus -= 1;
 		device_destroy(cmem_class, MKDEV(cmem_major_plus,
 						 cmem_minor_plus));
