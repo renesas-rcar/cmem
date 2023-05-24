@@ -73,7 +73,7 @@
 
 #include "cmemdrv.h"
 
-#define MAX_AREA_NUM 10
+#define MAX_AREA_NUM 42
 #define DEFAULT_AREA_SIZE (16 * 1024 * 1024)
 
 struct mem_area_data {
