@@ -112,6 +112,7 @@ module_param(cmem_major, uint, S_IRUGO);
 static unsigned int cmem_major_plus;
 static unsigned int cmem_minor_plus;
 static int no_map_skip;
+static bool bit_ranges; // checking for 40-bit regions
 
 static struct class *cmem_class = NULL;
 static struct mem_area_data *cmem_areas[MAX_AREA_NUM];
@@ -360,6 +361,8 @@ static int parse_reserved_mem_dt(struct device_node *np,
 {
 	const __be32 *regaddr_p = NULL, *find;
 	struct device_node *node = NULL;
+	struct resource r;
+	resource_size_t base_size;
 	int ret = 0;
 
 	node = of_parse_phandle(np, "memory-region", index);
@@ -380,6 +383,19 @@ static int parse_reserved_mem_dt(struct device_node *np,
 		find = of_get_property(node, "no-map", NULL);
 		if (find)
 			no_map_skip = 1;
+
+		/* Identify as if the region is 40-bit or 32-bit */
+		of_address_to_resource(node, 0, &r);
+		base_size = r.end;
+
+		if (base_size <= 0xFFFFFFFF) { // 32-bit
+			bit_ranges = false;
+		} else if (base_size > 0xFFFFFFFF && base_size <= 0xFFFFFFFFFF) { // 40-bit
+			bit_ranges = true;
+		} else {
+			pr_err("This region is over 40-bit\n");
+			bit_ranges = false;
+		}
 	}
 
 	of_node_put(node);
@@ -460,7 +476,12 @@ static int cmemdrv_create_device_other_region(dev_t devt, int index,
 		goto err;
 	}
 	area->dev = dev;
-	dev->coherent_dma_mask = DMA_BIT_MASK(32);
+
+	if (bit_ranges) {
+		dev->coherent_dma_mask = DMA_BIT_MASK(40);
+	} else {
+		dev->coherent_dma_mask = DMA_BIT_MASK(32);
+	}
 
 	of_dma_configure(dev, np, true);
 
