@@ -111,7 +111,7 @@ module_param(cmem_major, uint, S_IRUGO);
 
 static unsigned int cmem_major_plus;
 static unsigned int cmem_minor_plus;
-static int no_map_skip;
+static bool no_map_skip; // checking for no-map regions
 static bool bit_ranges; // checking for 40-bit regions
 
 static struct class *cmem_class = NULL;
@@ -378,11 +378,11 @@ static int parse_reserved_mem_dt(struct device_node *np,
 			ret = -1;
 		}
 
-		/* Identify as if the region is configured as no-map*/
-		no_map_skip = 0;
+		/* Identify as if the region is configured as no-map */
+		no_map_skip = false;
 		find = of_get_property(node, "no-map", NULL);
 		if (find)
-			no_map_skip = 1;
+			no_map_skip = true;
 
 		/* Identify as if the region is 40-bit or 32-bit */
 		of_address_to_resource(node, 0, &r);
@@ -396,6 +396,8 @@ static int parse_reserved_mem_dt(struct device_node *np,
 			pr_err("This region is over 40-bit\n");
 			bit_ranges = false;
 		}
+	} else {
+		pr_err("Unable to parse 'memory-region'\n");
 	}
 
 	of_node_put(node);
@@ -586,6 +588,8 @@ static int __init cmemdrv_init(void)
 			index++;
 		}
 	}
+
+	of_node_put(np);
 
 	return 0;
 
