@@ -113,6 +113,7 @@ static unsigned int cmem_major_plus;
 static unsigned int cmem_minor_plus;
 static bool no_map_skip; // checking for no-map regions
 static bool bit_ranges; // checking for 40-bit regions
+const char *label;  // checking for node name
 
 static struct class *cmem_class = NULL;
 static struct mem_area_data *cmem_areas[MAX_AREA_NUM];
@@ -396,6 +397,10 @@ static int parse_reserved_mem_dt(struct device_node *np,
 			pr_err("This region is over 40-bit\n");
 			bit_ranges = false;
 		}
+
+		/* Node name for naming cmem_other devices */
+		label = node->name;
+
 	} else {
 		pr_err("Unable to parse 'memory-region'\n");
 	}
@@ -463,11 +468,24 @@ static int cmemdrv_create_device_other_region(dev_t devt, int index,
 	struct device *dev;
 	void *virt_b_ptr;
 	int ret = 0;
+	const char *node_name;
 	dma_addr_t phy_b_addr;
 
-	dev = device_create(cmem_class, NULL, devt, NULL, "cmem_other%d", index);
+	if (*label == 0x00) {
+		pr_info("cmem: Node name not found; assigning device name with a number\n");
+		dev = device_create(cmem_class, NULL, devt, NULL, "cmem_other%d", index);
+	} else {
+		node_name = label;
+
+		label = strchr(label, ',');
+		if (label != NULL)
+			node_name = label + 1;
+
+		dev = device_create(cmem_class, NULL, devt, NULL, "cmem_%s", node_name);
+	}
+
 	if (IS_ERR(dev)) {
-		pr_err("cmem: unable to create device cmem_other%d\n", index);
+		pr_err("cmem: Unable to create device cmem_%s or cmem_other%d\n", node_name, index);
 		return PTR_ERR(dev);
 	}
 
