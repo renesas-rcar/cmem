@@ -95,6 +95,13 @@ struct mem_access_data {
 	int tl;
 };
 
+struct cmem_other_device {
+    int major;
+    struct list_head list;
+};
+
+static LIST_HEAD(device_list);
+
 static unsigned int bsize_count;
 static unsigned long bsize[MAX_AREA_NUM];
 module_param_array(bsize, ulong, &bsize_count, S_IRUGO);
@@ -109,8 +116,6 @@ module_param(cfg_bsize, ulong, S_IRUGO);
 static unsigned int cmem_major = 288;		// 0:auto
 module_param(cmem_major, uint, S_IRUGO);
 
-static unsigned int cmem_major_plus;
-static unsigned int cmem_minor_plus;
 static bool no_map_skip; // checking for no-map regions
 static bool bit_ranges; // checking for 40-bit regions
 const char *label;  // checking for node name
@@ -534,6 +539,41 @@ err:
 	return ret;
 }
 
+static int cmem_other_register_device(void)
+{
+	struct cmem_other_device *othr_dev;
+
+	othr_dev = kmalloc(sizeof(*othr_dev), GFP_KERNEL);
+	if (!othr_dev) {
+		pr_err("Failed to allocate memory for the device\n");
+		return -ENOMEM;
+	}
+
+	othr_dev->major = register_chrdev(0, "CMem-Other", &fops);
+	if (othr_dev->major < 0) {
+		printk(KERN_ALERT "Failed to register major number\n");
+		kfree(othr_dev);
+		return othr_dev->major;
+	}
+
+	INIT_LIST_HEAD(&othr_dev->list);
+	list_add(&othr_dev->list, &device_list);
+
+	return othr_dev->major;
+}
+
+static void cmem_other_unregister_devices(void)
+{
+    struct cmem_other_device *entry, *next;
+
+	list_for_each_entry_safe(entry, next, &device_list, list) {
+		device_destroy(cmem_class, MKDEV(entry->major, 0));
+		unregister_chrdev(entry->major, "CMem-Other");
+		list_del(&entry->list);
+		kfree(entry);
+    }
+}
+
 static int __init cmemdrv_init(void)
 {
 	int i = 0, prop_size = 0, index = 0;
@@ -574,30 +614,23 @@ static int __init cmemdrv_init(void)
 	np = of_find_node_by_path("/cmem");
 	of_get_property(np, "memory-region", &prop_size);
 	if (prop_size) {
-		cmem_major_plus = cmem_major + 9;
-		cmem_minor_plus = i;
-
-		/* Create devices that support other reserved memory regions*/
+		/* Create devices that support other reserved memory regions */
 		for (ret = 0; prop_size > 0; prop_size -= 4) {
-			/* Each character device need registration */
-			ret = register_chrdev(cmem_major_plus, "CMem-Other", &fops);
+			/* Devices registration */
+			ret = cmem_other_register_device();
 			if (ret < 0) {
-				pr_err("cmem: unable to get major %d\n", cmem_major_plus);
+				pr_err("cmem: unable to register device %d\n", ret);
+				cmem_other_unregister_devices();
 				return ret;
 			}
-			if (cmem_major_plus == 0)
-				cmem_major_plus = ret;
 
-			/* Parsing reserved memory size from DT*/
+			/* Parsing reserved memory size from DT */
 			parse_reserved_mem_dt(np, &reserved_size, index);
 
-			cmemdrv_create_device_other_region(MKDEV(cmem_major_plus,
-								       cmem_minor_plus),
+			cmemdrv_create_device_other_region(MKDEV(ret, 0),
 								 index, reserved_size, np);
 
-			/* Ignore failed region, continue with the next region*/
-			cmem_major_plus += 9;
-			cmem_minor_plus += 1;
+			/* Ignore failed region, continue with the next region */
 			index++;
 		}
 	}
@@ -619,19 +652,13 @@ err1:
 static void __exit cmemdrv_exit(void)
 {
 	int i;
+
 	for (i = 0; i < bsize_count; i++)
 		device_destroy(cmem_class, MKDEV(cmem_major, i));
 
-	while (cmem_major_plus > cmem_major + 9) {
-		cmem_major_plus -= 9;
-		cmem_minor_plus -= 1;
-		device_destroy(cmem_class, MKDEV(cmem_major_plus,
-						 cmem_minor_plus));
-		unregister_chrdev(cmem_major_plus, "CMem-Other");
-	}
-
-	class_destroy(cmem_class);
 	unregister_chrdev(cmem_major, "CMem");
+	cmem_other_unregister_devices();
+	class_destroy(cmem_class);
 }
 
 module_init(cmemdrv_init)
