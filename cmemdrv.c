@@ -373,7 +373,6 @@ static int parse_reserved_mem_dt(struct device_node *np,
 
 		if (regaddr_p) {
 			of_translate_address(node, regaddr_p);
-			pr_info("Getting reversed memory region size = [%llx]\n", *reserved_size);
 		} else {
 			pr_err("No reserved memory node for CMEM was found\n");
 			ret = -1;
@@ -461,10 +460,10 @@ err:
 }
 
 static int cmemdrv_create_device_other_region(dev_t devt, int index,
-					      u64 reserved_size)
+					      u64 reserved_size,
+						  struct device_node *np)
 {
 	struct mem_area_data *area;
-	struct device_node *np;
 	struct device *dev;
 	void *virt_b_ptr;
 	int ret = 0;
@@ -489,7 +488,6 @@ static int cmemdrv_create_device_other_region(dev_t devt, int index,
 		return PTR_ERR(dev);
 	}
 
-	np = of_find_node_by_path("/cmem");
 	area = devm_kzalloc(dev, sizeof(*area), GFP_KERNEL);
 	if (!area) {
 		ret = -ENOMEM;
@@ -593,12 +591,9 @@ static int __init cmemdrv_init(void)
 			/* Parsing reserved memory size from DT*/
 			parse_reserved_mem_dt(np, &reserved_size, index);
 
-			ret = cmemdrv_create_device_other_region(MKDEV(cmem_major_plus,
+			cmemdrv_create_device_other_region(MKDEV(cmem_major_plus,
 								       cmem_minor_plus),
-								 index, reserved_size);
-			if (ret < 0)
-				device_destroy(cmem_class, MKDEV(cmem_major_plus,
-								 cmem_minor_plus));
+								 index, reserved_size, np);
 
 			/* Ignore failed region, continue with the next region*/
 			cmem_major_plus += 9;
